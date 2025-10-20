@@ -1,5 +1,7 @@
 package btree
 
+import "fmt"
+
 type Tree struct {
 	root   *TreeNode
 	degree int
@@ -85,7 +87,7 @@ func (t *Tree) insertNonFull(node *TreeNode, key int) {
 			i -= 1
 		}
 
-		node.keys[i] = key
+		node.keys[i+1] = key
 		return
 	}
 
@@ -107,6 +109,9 @@ func (t *Tree) insertNonFull(node *TreeNode, key int) {
 	t.insertNonFull(node.children[i], key)
 }
 
+/*
+takes a parent tree node and the index of its full child
+*/
 func (t *Tree) splitChild(parent *TreeNode, idx int) {
 	// Retrieve the child that is about to be split
 	fullChild := parent.children[idx]
@@ -115,24 +120,72 @@ func (t *Tree) splitChild(parent *TreeNode, idx int) {
 		isLeaf: fullChild.isLeaf,
 	}
 
-	// Step 1: Move the right half of the keys to the new child
-	newChild.keys = append(newChild.keys, fullChild.keys[idx:]...)
+	// The median is at position t.degree - 1
+	medianIdx := t.degree - 1
+
+	// Step 1: Move the right half of the full childs keys into the new node
+	newChild.keys = append(newChild.keys, fullChild.keys[medianIdx+1:]...)
 	// Step 2: Keep only the left half of the keys in the original child
 	// (keys before the median)
-	medianKey := fullChild.keys[idx-1]
-	fullChild.keys = fullChild.keys[:idx-1]
+	medianKey := fullChild.keys[medianIdx]
+	fullChild.keys = fullChild.keys[:medianIdx]
 
 	// Step 3: If the node is not a leaf, we also need to move the right half of the children
 	if !fullChild.isLeaf {
-		newChild.children = append(newChild.children, fullChild.children[:idx]...)
-		fullChild.children = fullChild.children[:idx]
+		newChild.children = append(newChild.children, fullChild.children[medianIdx+1:]...)
+		fullChild.children = fullChild.children[:medianIdx+1]
 	}
-	// Step 4: Insert the new child into the parent’s children list
+	// Step 4: Insert the new child into the parent's children list
 	// (insert right after the full child we just split)
 	parent.children = append(parent.children[:idx+1],
 		append([]*TreeNode{newChild}, parent.children[idx+1:]...)...)
 	// Step 5: Insert the median key into the parent
 
-	parent.keys = append(parent.keys[:idx+1],
-		append([]int{medianKey}, parent.keys[idx+1:]...)...)
+	parent.keys = append(parent.keys[:idx],
+		append([]int{medianKey}, parent.keys[idx:]...)...)
+}
+
+// Print displays the B-tree structure in a readable format
+func (t *Tree) Print() {
+	if t.root == nil {
+		fmt.Println("Empty tree")
+		return
+	}
+	fmt.Printf("B-tree (degree %d):\n", t.degree)
+	t.printNode(t.root, "", true)
+}
+
+// printNode recursively prints the tree structure with proper indentation
+func (t *Tree) printNode(node *TreeNode, prefix string, isLast bool) {
+	if node == nil {
+		return
+	}
+
+	// Print current node
+	connector := "├── "
+	if isLast {
+		connector = "└── "
+	}
+
+	nodeType := "Internal"
+	if node.isLeaf {
+		nodeType = "Leaf"
+	}
+
+	fmt.Printf("%s%s%s: %v\n", prefix, connector, nodeType, node.keys)
+
+	// Print children if this is not a leaf
+	if !node.isLeaf {
+		childPrefix := prefix
+		if isLast {
+			childPrefix += "    "
+		} else {
+			childPrefix += "│   "
+		}
+
+		for i, child := range node.children {
+			isLastChild := i == len(node.children)-1
+			t.printNode(child, childPrefix, isLastChild)
+		}
+	}
 }
