@@ -145,6 +145,181 @@ func (t *Tree) splitChild(parent *TreeNode, idx int) {
 		append([]int{medianKey}, parent.keys[idx:]...)...)
 }
 
+func (t *Tree) Delete(val int) {
+	if t.root == nil {
+		return
+	}
+
+	t.root.delete(val, t.degree)
+
+	// If the root becomes empty and has children, collapse it.
+	if len(t.root.keys) == 0 {
+		if !t.root.isLeaf {
+			t.root = t.root.children[0]
+		} else {
+			// If the tree is now empty
+			t.root = nil
+		}
+	}
+}
+
+func (n *TreeNode) delete(val int, t int) {
+	// Step 1: Find the index of the first key >= val
+	idx := n.findKey(val)
+	// --- Case 1: The key is present in this node ---
+	if idx < len(n.keys) && n.keys[idx] == val {
+		if n.isLeaf {
+			// Simple case: key found in leaf node
+			// Just remove the key from the node
+			n.removeFromLeaf(idx)
+		} else {
+			// Key found in internal node
+			// Handle predecessor/successor replacement or merge
+			n.removeFromInternal(val, idx, t)
+		}
+		return
+	}
+	// --- Case 2: Key is not in this node ---
+	// Base case: we've hit a leaf and didn't find the key
+	if n.isLeaf {
+		fmt.Println("Couldn't find key")
+		return
+	} else {
+		// Before descending, ensure the target child has at least t keys
+		if len(n.children[idx].keys) < t {
+			idx = n.fill(idx, t)
+		}
+
+		n.children[idx].delete(val, t)
+
+	}
+}
+
+func (n *TreeNode) findKey(val int) int {
+	i := 0
+	for i < len(n.keys) && n.keys[i] < val {
+		i += 1
+	}
+	return i
+}
+
+func (n *TreeNode) removeFromLeaf(idx int) {
+	for i := idx + 1; i < len(n.keys); i += 1 {
+		n.keys[i-1] = n.keys[i]
+	}
+	n.keys = n.keys[:len(n.keys)-1]
+}
+
+func (n *TreeNode) removeFromInternal(val int, idx int, t int) int {
+	left := n.children[idx]
+	right := n.children[idx+1]
+	if len(left.keys) >= t { // replace the node with the predecessor from the left child
+		pk := n.getPredecessor(idx)
+		n.keys[idx] = pk
+		left.delete(pk, t)
+	} else if len(right.keys) >= t { // replace the node with the successor from the right child
+		sk := n.getSuccessor(idx)
+		n.keys[idx] = sk
+		right.delete(sk, t)
+	} else { // merge our children
+		n.mergeChildren(idx)
+		n.children[idx].delete(val, t)
+
+	}
+	return -1
+}
+
+func (n *TreeNode) getPredecessor(idx int) int {
+	curr := n.children[idx]
+	for !curr.isLeaf {
+		curr = curr.children[(len(curr.children) - 1)]
+	}
+	return curr.keys[(len(curr.keys) - 1)]
+}
+
+func (n *TreeNode) getSuccessor(idx int) int {
+	curr := n.children[idx+1]
+	for !curr.isLeaf {
+		curr = curr.children[0]
+	}
+	return curr.keys[0]
+}
+
+func (n *TreeNode) mergeChildren(idx int) {
+	child := n.children[idx]
+	sibling := n.children[idx+1]
+
+	child.keys = append(child.keys, n.keys[idx])
+	child.keys = append(child.keys, sibling.keys...)
+
+	if !child.isLeaf {
+		child.children = append(child.children, sibling.children...)
+	}
+
+	n.keys = append(n.keys[:idx], n.keys[idx+1:]...)
+	n.children = append(n.children[:idx+1], n.children[idx+2:]...)
+}
+
+func (n *TreeNode) fill(idx int, t int) int {
+	if len(n.children[idx].keys) >= t {
+		return idx
+	}
+
+	if idx > 0 && len(n.children[idx-1].keys) >= t {
+		n.borrowFromPrev(idx)
+		return idx
+	} else if idx < len(n.children)-1 && len(n.children[idx+1].keys) >= t {
+		n.borrowFromNext(idx)
+		return idx
+	} else {
+		if idx < len(n.children)-1 {
+			n.mergeChildren(idx)
+			return idx
+		} else {
+			n.mergeChildren(idx - 1)
+			return idx - 1
+		}
+	}
+}
+
+func (n *TreeNode) borrowFromPrev(idx int) {
+	child := n.children[idx]
+	leftSibling := n.children[idx-1]
+
+	// Move parent's key down into child's front
+	child.keys = append([]int{n.keys[idx-1]}, child.keys...)
+
+	// Move left sibling's last key up into parent
+	n.keys[idx-1] = leftSibling.keys[len(leftSibling.keys)-1]
+	leftSibling.keys = leftSibling.keys[:len(leftSibling.keys)-1]
+
+	// Move last child pointer if internal
+	if !leftSibling.isLeaf {
+		lastChild := leftSibling.children[len(leftSibling.children)-1]
+		leftSibling.children = leftSibling.children[:len(leftSibling.children)-1]
+		child.children = append([]*TreeNode{lastChild}, child.children...)
+	}
+}
+
+func (n *TreeNode) borrowFromNext(idx int) {
+	child := n.children[idx]
+	rightSibling := n.children[idx+1]
+
+	// Move parent's key down into child's end
+	child.keys = append(child.keys, n.keys[idx])
+
+	// Move right sibling's first key up into parent
+	n.keys[idx] = rightSibling.keys[0]
+	rightSibling.keys = rightSibling.keys[1:]
+
+	// Move first child pointer if internal
+	if !rightSibling.isLeaf {
+		firstChild := rightSibling.children[0]
+		rightSibling.children = rightSibling.children[1:]
+		child.children = append(child.children, firstChild)
+	}
+}
+
 // Print displays the B-tree structure in a readable format
 func (t *Tree) Print() {
 	if t.root == nil {
